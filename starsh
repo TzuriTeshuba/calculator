@@ -1,0 +1,4 @@
+	nasm -f elf32 && gcc $(sFile) -o $(oFile)
+	ld -m elf_i386 $(oFile) -o $(prog)
+
+    	nasm -felf32 $(sFile) && gcc $(oFile) && $(prog)
