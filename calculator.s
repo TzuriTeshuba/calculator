@@ -173,7 +173,7 @@ section .text
 ;;completed
 %macro popAndPrint 0
     popFromStack ;popped list is now in result
-    mov eax, [_result]
+    mov eax, [_result] ;eax = address of the lists head
     mov dword[_curr],eax ;curr = list.head address
     push 0;
     %%pushWhileLoop:
@@ -202,93 +202,17 @@ section .text
         jnz %%pushWhileLoop
         
     %%printWhileLoop:
-
-
-
-
-
-    ;curr = curr.next
-    
-
-    
-%endmacro
-
-;;completed
-%macro myPrint 0
-    %%whileLoop:
-    pop ebx     ;ebx = pointer to adress of link
-    mov ebx, [ebx]  ;ebx = address of link
-    mov dword[_x],ebx ;;x holds address of link to print recursively
-    ;;if(x.next == null) print
-    ;;else push x; push x.next; myPrint next (recursion)
-    mov ebx, [_x]   ;ebx = address of link
-    mov eax,[ebx+1] ;eax = x.next address
-    cmp eax, 0
-    jz %%base
-    jmp %%notBase
-
-    %%base:
-        mov eax,0 
-        mov al,[_x] ;al=first byte of x = x.value
-        cmp al,9
-        jle %%ifNumberBase
-        jmp %%ifLetterBase
-
-        %%ifNumberBase:
-            add al, 48
-            jmp %%regardlessBase
-
-        %%ifLetterBase:
-            add al, 55
-            jmp %%regardlessBase
-
-        %%regardlessBase:
-            mov byte [_char],al
-            mov edx, 1  ;edx = numBytes to write
-            mov ecx, _char     ;ecx = curr.value
-            mov ebx, 1    ;ebx = stdout
-            mov eax, 4          ;eax = sys_write op code
-            int 0x80            ;call the kernel to write numBytes to victim
-            jmp %%endPrint
-
-    %%notBase:
-        mov ebx, [_x] ;ebx = pointer to link
-        push ebx     ;push x address
-        mov ebx, [_x]   ;ebx = pointer to link
-        mov ecx, [ebx+1] ;ecx = x.next address
-        push ecx     ;push x.next address
-        call %%beginMyPrint         ;now x.next is at top of stack and it's done
-        pop ebx            ;ebx = pointer to link address
-        mov ebx, [ebx]      ;ebx = link address
-        mov dword[_x],ebx 
-        mov eax,0 
-        mov al,[ebx] ;al=first byte of x = x.value
-        cmp al,9
-        jle %%ifNumberNotBase
-        jmp %%ifLetterNotBase
-
-        %%ifNumberNotBase:
-            add al, 48
-            jmp %%regardlessNotBase
-
-        %%ifLetterNotBase:
-            add al, 55
-            jmp %%regardlessNotBase
-
-        %%regardlessNotBase:
-            mov byte [_char],al
-            mov edx, 1  ;edx = numBytes to write
-            mov ecx, _char     ;ecx = curr.value
-            mov ebx, 1    ;ebx = stdout
-            mov eax, 4          ;eax = sys_write op code
-            int 0x80            ;call the kernel to write numBytes to victim
-            ret
-            ;jmp %%endPrint
-    %%endPrint:   
-%endmacro
-
-%macro printSingleDigit 0
-    ;;double code in print
+        pop eax
+        cmp eax, 0          ;check if you popper NULL
+        jz %%popAndPrintEnd
+        mov [_char], al
+        mov edx, 1          ;edx = numBytes to write
+        mov ecx, _char      ;ecx = char (buffer)
+        mov ebx, 1          ;ebx = stdout
+        mov eax, 4          ;eax = sys_write op code
+        int 0x80            ;call the kernel to write numBytes to victim
+        jmp %%printWhileLoop 
+    %%popAndPrintEnd: 
 %endmacro
 
 %macro numHexaDigits 0
