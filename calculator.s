@@ -104,27 +104,28 @@ section .text
         ;;check condition
         mov eax, [_idx]
         mov ebx, [_inputLength]
-        sub ebx, eax
-        cmp ebx, 0
-        jge %%endWhileLoop
+        sub ebx, eax    ;ebx = length - idx
+        cmp ebx, 0       
+        jle %%endWhileLoop
         ;read val from buffer         
         add eax, _inputBuffer            ;let eax = pointer to buffer[idx]
         mov ecx, 0
         mov cl, [eax]                   ;ecx = 0x000000buffer[idx]
-        mov byte [_char],cl            ;let char = buffer[idx]
+        mov byte [_char],cl             ;let char = buffer[idx]
         ;new head points to old head
         push 1
         push 5
-        call calloc ;eax should hold pointer to newly allocated mem
+        call calloc                     ;eax should hold pointer to newly allocated mem
         add esp, 8
-        mov dword [_newHead], eax ;eax = pointer to newHead
-        mov cl, [_char]             ;cl = currValue
+        mov dword [_newHead], eax       ;eax = pointer to newHead
+        mov cl, [_char]                 ;cl = currValue
         mov edx, [_newHead]
-        mov byte[edx], cl        ;newHead.value = cl = newValue
-        mov eax, [_oldHead]          ;eax = pointer to oldHead
-        mov dword[edx+1],eax   ;newHead.next = eax = pntr to oldHead
-        mov eax, [_newHead]           ;eax = pntr to newHead
-        mov dword [_oldHead], eax     ;oldHead = newHead
+        mov byte[edx], cl               ;newHead.value = cl = newValue
+        mov eax, [_oldHead]             ;eax = pointer to oldHead
+        mov dword[edx+1],eax            ;newHead.next = eax = pntr to oldHead
+        mov eax, [_newHead]             ;eax = pntr to newHead
+        mov dword [_oldHead], eax       ;oldHead = newHead
+        inc dword[_idx]                 ;increment buffer index 
 
         jmp %%whileLoop
     
@@ -211,7 +212,14 @@ section .text
         mov eax, 4          ;eax = sys_write op code
         int 0x80            ;call the kernel to write numBytes to victim
         jmp %%printWhileLoop 
-    %%popAndPrintEnd: 
+    %%popAndPrintEnd:
+        mov al, 10
+        mov byte[_char], al
+        mov edx, 1          ;edx = numBytes to write
+        mov ecx, _char      ;ecx = char (buffer)
+        mov ebx, 1          ;ebx = stdout
+        mov eax, 4          ;eax = sys_write op code
+        int 0x80            ;call the kernel to write numBytes to victim
 %endmacro
 
 %macro numHexaDigits 0
