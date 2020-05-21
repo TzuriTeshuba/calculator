@@ -98,8 +98,6 @@ section .text
 
 ;;completed
 %macro listify 0
-    ;;BASIC IDEA - build the list backwards. buffer[0] will be MSB, last element(link) is the head
-
     mov dword [_oldHead], 0
     mov dword[_idx], 0
     %%whileLoop: ;while(idx<inputLength)
@@ -156,31 +154,32 @@ section .text
 
 %macro pushToStack 1
     ;; %1 is pointer to push
-    mov ebx, [_topOfStack]
-    add ebx, 4
-    mov [_topOfStack],ebx
-    mov eax, %1
-    mov dword[_topOfStack], eax 
+    mov ebx, [_topOfStack]      ;ebx = address of current top element
+    add ebx, 4                  ;ebx = address of first available place in op stack
+    mov [_topOfStack],ebx       ;top of stack holds address of first available space
+    mov eax, %1                 ;eax = arg1 = pointer to push
+    mov dword[ebx], eax         ;first available spot filled filled arg1
 %endmacro
 
 ;;pops top element into result register and decrements top of stack
 %macro popFromStack 0
-    mov eax, [_topOfStack]
+    mov eax, [_topOfStack]      ;eax = address of top-most element
+    mov eax, [eax]              ;eax = value of top-most element = address of some list's head
     mov dword[_result], eax 
     sub dword[_topOfStack], 4
 %endmacro
 
 ;;completed
 %macro popAndPrint 0
-    popFromStack ;popped list is now in result
-    mov eax, [_result] ;eax = address of the lists head
-    mov dword[_curr],eax ;curr = list.head address
+    popFromStack                ;popped list is now in result
+    mov eax, [_result]          ;eax = address of the lists head
+    mov dword[_curr],eax        ;curr = list.head address
     push 0;
     %%pushWhileLoop:
     ;while(next not null)push value to stack (seperately push last)
-    mov eax, [_curr] ;ebx = address of curr
-    mov eax, [eax] ;ebx = 0x0curr.value
-    cmp al,9
+    mov eax, [_curr]            ;ebx = address of curr
+    mov eax, [eax]              ;ebx = 0x0curr.value //SegFault
+    cmp al,9                    ;check if value reps letter decimal number
     jle %%ifNumberBase
     jmp %%ifLetterBase
 
@@ -221,11 +220,16 @@ section .text
 
 
 main:
+    ;set topOfStack to hold address of stack-1
+    mov eax, _operandStack
+    sub eax,4
+    mov dword [_topOfStack],eax
+
     runloop:
 
         getUserInput
         mov eax, 0
-        mov al, [_inputBuffer]   ;eax = LSByte ;might be [buffer+1] if \n or \0 present
+        mov al, [_inputBuffer]   ;eax = LSByte
         cmp al, 'q'
         jz endOfProgram
 
