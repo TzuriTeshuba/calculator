@@ -100,14 +100,7 @@ section .text
 %macro listify 0
     ;;BASIC IDEA - build the list backwards. buffer[0] will be MSB, last element(link) is the head
 
-    push 1
-    push 5
-    call calloc ;eax should hold pointer to newly allocated mem
-    add esp, 8
-    ;;might have to move byte by byte
-    mov dword [_prev], eax
-    ;pushToStack _prev ;prev is the head and pushed to our stack
-
+    mov dword [_oldHead], 0
     mov dword[_idx], 0
     %%whileLoop: ;while(idx<inputLength)
         ;;check condition
@@ -116,30 +109,29 @@ section .text
         sub ebx, eax
         cmp ebx, 0
         jge %%endWhileLoop
-        ;read val from buffer
-         
+        ;read val from buffer         
         add eax, _inputBuffer            ;let eax = pointer to buffer[idx]
         mov ecx, 0
         mov cl, [eax]                   ;ecx = 0x000000buffer[idx]
         mov byte [_char],cl            ;let char = buffer[idx]
-        ;new link = curr
-        push 1
-        push 5
-        call calloc ;eax should hold pointer to newly allocated mem
-        mov [_curr], eax
-        add esp, 8
-        mov [_oldHead], 
         ;new head points to old head
         push 1
         push 5
         call calloc ;eax should hold pointer to newly allocated mem
         add esp, 8
-        mov dword _newHead, eax
-        mov 
+        mov dword [_newHead], eax ;eax = pointer to newHead
+        mov cl, [_char]             ;cl = currValue
+        mov edx, [_newHead]
+        mov byte[edx], cl        ;newHead.value = cl = newValue
+        mov eax, [_oldHead]          ;eax = pointer to oldHead
+        mov dword[edx+1],eax   ;newHead.next = eax = pntr to oldHead
+        mov eax, [_newHead]           ;eax = pntr to newHead
+        mov dword [_oldHead], eax     ;oldHead = newHead
 
         jmp %%whileLoop
     
     %%endWhileLoop:
+        pushToStack [_newHead]
 
 %endmacro
 
@@ -174,23 +166,63 @@ section .text
 ;;pops top element into result register and decrements top of stack
 %macro popFromStack 0
     mov eax, [_topOfStack]
-    mov _result, eax 
-    sub _topOfStack, 4
+    mov dword[_result], eax 
+    sub dword[_topOfStack], 4
 %endmacro
 
 ;;completed
 %macro popAndPrint 0
-    ;popFromStack
-    ;push dword[_result] ;popFromStack should pop into result
+    popFromStack ;popped list is now in result
+    mov eax, [_result]
+    mov dword[_curr],eax ;curr = list.head address
+    push 0;
+    %%pushWhileLoop:
+    ;while(next not null)push value to stack (seperately push last)
+    mov eax, [_curr] ;ebx = address of curr
+    mov eax, [eax] ;ebx = 0x0curr.value
+    cmp al,9
+    jle %%ifNumberBase
+    jmp %%ifLetterBase
+
+    %%ifNumberBase:
+        add al, 48
+        jmp %%regardlessBase
+
+    %%ifLetterBase:
+        add al, 55
+        jmp %%regardlessBase
+    
+    %%regardlessBase:
+        push eax    ;eax should have zero(s) as MSB!
+        mov eax, [_curr] ;eax = address of curr
+        mov eax,[eax+1] ;eax = address of curr.next
+        mov dword [_curr], eax ; curr points to address of curr.next
+        ;;now check if next is null
+        cmp eax,0 ;check if next's address is NULL
+        jnz %%pushWhileLoop
+        
+    %%printWhileLoop:
+
+
+
+
+
+    ;curr = curr.next
+    
+
+    
 %endmacro
 
 ;;completed
-%macro print 0
-                    ;;;arg is address of link to print recursively
-    pop _x ;;x is address of link to print recursively
+%macro myPrint 0
+    %%whileLoop:
+    pop ebx     ;ebx = pointer to adress of link
+    mov ebx, [ebx]  ;ebx = address of link
+    mov dword[_x],ebx ;;x holds address of link to print recursively
     ;;if(x.next == null) print
-    ;;else push x; push x.next; print next
-    mov eax,[_x+1] ;eax = x.next address
+    ;;else push x; push x.next; myPrint next (recursion)
+    mov ebx, [_x]   ;ebx = address of link
+    mov eax,[ebx+1] ;eax = x.next address
     cmp eax, 0
     jz %%base
     jmp %%notBase
@@ -198,7 +230,6 @@ section .text
     %%base:
         mov eax,0 
         mov al,[_x] ;al=first byte of x = x.value
-        mov byte[_char], al ;char=x.value
         cmp al,9
         jle %%ifNumberBase
         jmp %%ifLetterBase
@@ -221,13 +252,17 @@ section .text
             jmp %%endPrint
 
     %%notBase:
-        push _x
-        push [_x+1]
-        print
-        pop _x
+        mov ebx, [_x] ;ebx = pointer to link
+        push ebx     ;push x address
+        mov ebx, [_x]   ;ebx = pointer to link
+        mov ecx, [ebx+1] ;ecx = x.next address
+        push ecx     ;push x.next address
+        call %%beginMyPrint         ;now x.next is at top of stack and it's done
+        pop ebx            ;ebx = pointer to link address
+        mov ebx, [ebx]      ;ebx = link address
+        mov dword[_x],ebx 
         mov eax,0 
-        mov al,[_x] ;al=first byte of x = x.value
-        mov byte[_char], al ;char=x.value
+        mov al,[ebx] ;al=first byte of x = x.value
         cmp al,9
         jle %%ifNumberNotBase
         jmp %%ifLetterNotBase
@@ -247,10 +282,8 @@ section .text
             mov ebx, 1    ;ebx = stdout
             mov eax, 4          ;eax = sys_write op code
             int 0x80            ;call the kernel to write numBytes to victim
-            jmp %%endPrint
-        
-
-
+            ret
+            ;jmp %%endPrint
     %%endPrint:   
 %endmacro
 
@@ -284,9 +317,7 @@ main:
 
     receiveOperand:
         convertAsciiToHexa
-        ;listify
-        
-
+        listify
         jmp runloop
 
     endOfProgram:
