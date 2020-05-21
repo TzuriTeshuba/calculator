@@ -1,14 +1,15 @@
-oFile = calculator.o
-sFile = calculator.s
 prog = calculator
 
-all: exec
+all: $(prog)
 
-exec: $(cFile)
-	nasm -f elf32 $(sFile) -o $(oFile)
-	ld -m elf_i386 $(oFile) -o $(prog)
-	rm -rf ./*.o
+$(prog): myCalc.o
+	gcc -m32 -Wall -g myCalc.o -o $(prog)
+	rm -f myCalc.o
+
+myCalc.o: calculator.s
+	nasm -f elf calculator.s -o myCalc.o
 
 .PHONY: clean
+
 clean:
-	rm -rf ./*.o $(prog)
+	rm -f *.o  $(prog)

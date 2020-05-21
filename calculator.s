@@ -18,6 +18,9 @@ section .bss
     _char: resb 1
     _next: resd 1
     _curr: resd 1
+    _prev: resd 1
+    _newHead: resd 1
+    _oldHead: resd 1
     _inputLength: resd 1
 
 section .data
@@ -25,14 +28,9 @@ section .data
     _numOperations: dd 0
     _idx: dd 0
 
-    struc link
-        .value resb 1 ;single hexa digit 0x00-0xFF
-        .next resd 1 ;pointer to next
-    endstruc
 
 section .text
     align 16
-    global _start
     global main
     extern printf
     extern fprintf 
@@ -43,44 +41,15 @@ section .text
     extern getchar 
     extern fgets   
 
-_start:
-    runloop:
-        push _calcPrompt    ;remove
-        push _format_string ; remove
-        call printf ;remove
-        getUserInput
-
-
-        mov eax, 0
-        mov al, [_inputBuffer]   ;eax = LSByte ;might be [buffer+1] if \n or \0 present
-        cmp al, 'p'
-        jz calcPrint
-        jmp receiveOperand
-
-    calcPrint:
-        popAndPrint
-        jmp runloop
-
-
-    receiveOperand:
-        convertAsciiToHexa
-        listify
-        jmp runloop
-        
-        
-
-;_init:
-
-
-
-
-;completed
+;verified
 %macro getUserInput 0
-    push _calcPrompt
-    push _format_string
-    call printf
-    pop eax     ;eax arbitrary choice
-    clearInputBuffer
+    push _calcPrompt    
+    push _format_string 
+    call printf 
+    add esp, 8
+
+    ;pop eax     ;eax arbitrary choice
+    ;clearInputBuffer
     ;read relavent byte code to buffer
     mov edx, 80                 ;edx = numBytes
     mov ecx, _inputBuffer     ;ecx = inputBuffer
@@ -89,14 +58,17 @@ _start:
     int 0x80            ;call the kernel to read numBytes to buffer
 %endmacro
 
-;completed - convert char buffer to hexa byte rep
+;verified - convert char buffer to hexa byte rep
 %macro convertAsciiToHexa 0
     mov dword[_idx],0
     %%whileLoop:
-        mov ebx, inputBuffer   ;ebx = address of buffer 
+        mov ebx,_inputBuffer   ;ebx = address of buffer 
         mov ecx, [_idx]         ;ecx holds value of _idx
+        mov eax,0
         mov al,[ebx+ecx]        ;al hold value of char at buffer[idx]
         cmp al, 0
+        jz %%endWhileLoop
+        cmp al, 10
         jz %%endWhileLoop
         mov byte[_char], al
         cmp byte[_char], 60     ;digits less than 60, letters greater than 60
@@ -113,7 +85,8 @@ _start:
     
     %%regardless:
         mov al, [_char]
-        mov byte[_inputBuffer+ecx], al
+        mov ebx, _inputBuffer
+        mov byte[ebx+ecx], al
         inc dword[_idx]
         jmp %%whileLoop
 
@@ -130,10 +103,10 @@ _start:
     push 1
     push 5
     call calloc ;eax should hold pointer to newly allocated mem
-    add esp 8
+    add esp, 8
     ;;might have to move byte by byte
-    mov _prev, eax
-    pushToStack _prev ;prev is the head and pushed to our stack
+    mov dword [_prev], eax
+    ;pushToStack _prev ;prev is the head and pushed to our stack
 
     mov dword[_idx], 0
     %%whileLoop: ;while(idx<inputLength)
@@ -144,19 +117,26 @@ _start:
         cmp ebx, 0
         jge %%endWhileLoop
         ;read val from buffer
-        mov eax, [_inputBuffer+[_idx]] ;let eax = buffer[idx]
-        mov byte [_char],eax            ;let char = buffer[idx]
+         
+        add eax, _inputBuffer            ;let eax = pointer to buffer[idx]
+        mov ecx, 0
+        mov cl, [eax]                   ;ecx = 0x000000buffer[idx]
+        mov byte [_char],cl            ;let char = buffer[idx]
         ;new link = curr
         push 1
         push 5
         call calloc ;eax should hold pointer to newly allocated mem
-        mov _curr, eax
-        add esp 8
-        ;put prev.next= address of curr
-        mov _prev+1, _curr ; prev.next=curr
-        ;put buff val into curr value
-        mov _curr, [-char] ;curr.value = char
-        inc dword[_idx]
+        mov [_curr], eax
+        add esp, 8
+        mov [_oldHead], 
+        ;new head points to old head
+        push 1
+        push 5
+        call calloc ;eax should hold pointer to newly allocated mem
+        add esp, 8
+        mov dword _newHead, eax
+        mov 
+
         jmp %%whileLoop
     
     %%endWhileLoop:
@@ -164,7 +144,7 @@ _start:
 %endmacro
 
 ;stores pointer M[ebx]+M[ecx] in eax
-%macro add 0
+%macro myAdd 0
     ;%1 has x and %2 has y
     popFromStack
     mov _x, _result
@@ -200,8 +180,8 @@ _start:
 
 ;;completed
 %macro popAndPrint 0
-    popFromStack
-    push [_result] ;popFromStack should pop into result
+    ;popFromStack
+    ;push dword[_result] ;popFromStack should pop into result
 %endmacro
 
 ;;completed
@@ -236,7 +216,7 @@ _start:
             mov edx, 1  ;edx = numBytes to write
             mov ecx, _char     ;ecx = curr.value
             mov ebx, 1    ;ebx = stdout
-            mov eax, 3          ;eax = sys_write op code
+            mov eax, 4          ;eax = sys_write op code
             int 0x80            ;call the kernel to write numBytes to victim
             jmp %%endPrint
 
@@ -265,7 +245,7 @@ _start:
             mov edx, 1  ;edx = numBytes to write
             mov ecx, _char     ;ecx = curr.value
             mov ebx, 1    ;ebx = stdout
-            mov eax, 3          ;eax = sys_write op code
+            mov eax, 4          ;eax = sys_write op code
             int 0x80            ;call the kernel to write numBytes to victim
             jmp %%endPrint
         
@@ -282,4 +262,36 @@ _start:
  
 %endmacro
 
+
+main:
+    runloop:
+
+        getUserInput
+        mov eax, 0
+        mov al, [_inputBuffer]   ;eax = LSByte ;might be [buffer+1] if \n or \0 present
+        cmp al, 'q'
+        jz endOfProgram
+
+        cmp al, 'p'
+        jz calcPrint
+
+        jmp receiveOperand
+
+    calcPrint:
+        popAndPrint
+        jmp runloop
+
+
+    receiveOperand:
+        convertAsciiToHexa
+        ;listify
+        
+
+        jmp runloop
+
+    endOfProgram:
+        mov eax, [_numOperations] 
+        
+
+;_init:
 
