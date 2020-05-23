@@ -27,6 +27,9 @@ section .data
     _stackCapacity: dd 5
     _numOperations: dd 0
     _idx: dd 0
+    _valx: db 0
+    _valy: db 0
+    _valz: db 0
 
 
 section .text
@@ -136,13 +139,107 @@ section .text
 
 ;stores pointer M[ebx]+M[ecx] in eax
 %macro myAdd 0
-    ;%1 has x and %2 has y
     popFromStack
-    mov _x, _result
+    mov eax, [_result]
+    mov dword[_x],eax       ;x hold address of 1st head
     popFromStack
-    mov _y, _result
-    ;need to finish
-    
+    mov eax, [_result]
+    mov dword[_y],eax       ;y hold address of 2nd head
+
+    mov byte[_carry],0      ;reset the carry
+    mov dword[_prev],0      ;prev init to null
+    mov dword[_result], 0   ;result will point to the address to push, it's now null
+
+    ;loop starts here
+    %%whileLoop:
+        mov byte [_valx],0                  ;init valx to 0
+        mov byte [_valy],0                  ; init valy to 0
+        cmp dword [_x],0                    ;check if x points to null (end of list1)
+        jz %%calcedX
+
+        ;valx = x.val 
+        mov eax, [_x]                       ;eax holds pointer to x-list link
+        mov ebx,0
+        mov bl, [eax]                       ;bl = x.val
+        mov byte[_valx], bl                 ;valx=x.val
+
+        %%calcedX:
+            cmp dword [_y],0
+            jz %%calcedY
+
+            ;valy = y.val 
+            mov eax, [_y]                   ;eax holds pointer to y-list link
+            mov ebx,0
+            mov bl, [eax]                   ;bl = y.val
+            mov byte[_valy], bl             ;valy=y.val
+
+        %%calcedY:
+            ;;check if both x and y are null
+            mov eax, [_x]
+            add eax, [_y]
+            cmp eax, 0                      ;check if x and y are BOTH null
+            jz %%finishIterating            ;still have to add the carry!
+
+            mov ecx,0
+            mov cl, [_valx]
+            add cl, [_valy]
+            add cl, [_carry]
+            mov byte[_valz],cl
+            cmp cl, 0x10
+            jge %%carry
+            jmp %%dontCarry
+        
+        %%carry:
+            mov byte[_carry],1
+            sub byte[_valz], 0x10
+            jmp %%carryOrNot
+
+        %%dontCarry:
+            mov byte[_carry],0
+            jmp %%carryOrNot
+
+        %%carryOrNot:
+            ;new head points to old head
+            push 1
+            push 5
+            call calloc                     ;eax should hold pointer to newly allocated mem
+            add esp, 8
+            mov ebx, [_result]
+            cmp ebx, 0 
+            jnz %%skip
+            mov dword[_result], eax
+            pushToStack eax
+
+        %%skip:
+            mov dword [_next], eax          ;next holds address of new link
+            mov cl, [_valz]                 ;cl = currValue
+            mov edx, [_next]                ;edx hold address of new link 
+            mov byte[edx], cl               ;newLink.value = cl = newValue
+            mov eax, [_prev]                ;eax = pointer to prev
+            mov dword[edx+1],0              ;newLink.next = null
+            mov dword[eax+1], edx           ;prev.next = address of new link
+            mov dword [_prev], edx          ;prev = new link
+            jmp %%whileLoop
+
+        %%finishIterating:
+            cmp byte[_carry], 0
+            jz %%endOfAdd
+            ;;create extra link for the carry
+            push 1
+            push 5
+            call calloc                     ;eax should hold pointer to newly allocated mem
+            add esp, 8
+            mov dword [_next], eax          ;next holds address of new link
+            mov cl, 1                       ;cl = currValue
+            mov edx, [_next]                ;edx hold address of new link 
+            mov byte[edx], cl               ;newLink.value = cl = newValue
+            mov eax, [_prev]                ;eax = pointer to prev
+            mov dword[edx+1],0              ;newLink.next = null
+            mov dword[eax+1], edx           ;prev.next = address of new link
+            mov dword [_prev], edx          ;prev = new link
+
+    %%endOfAdd:
+
 %endmacro
 
 %macro clearInputBuffer 0
@@ -244,12 +341,18 @@ main:
         cmp al, 'p'
         jz calcPrint
 
+        cmp al, '+'
+        jz calcAdd
+
         jmp receiveOperand
 
     calcPrint:
         popAndPrint
         jmp runloop
 
+    calcAdd:
+        myAdd
+        jmp runloop
 
     receiveOperand:
         convertAsciiToHexa
