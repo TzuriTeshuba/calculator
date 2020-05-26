@@ -6,6 +6,8 @@ section .rodata
     _format_string: db "%s", 10, 0	; format string
     _overFlowMsg: db 'Error: Operand Stack Overflow', 10,0
     _underFlowMsg: db 'Error: Insufficient Number of Arguments on Stack', 10, 0
+    _testMsg: db 'checking', 10, 0
+
 
 section .bss
     _carry: resb 1
@@ -146,97 +148,100 @@ section .text
     mov eax, [_result]
     mov dword[_y],eax       ;y hold address of 2nd head
 
+    push 1
+    push 5
+    call calloc             ;eax should hold pointer to newly allocated mem
+    mov dword[_curr],eax    ;curr = new link() adrs
+    add esp, 8              ;reset stack pointer after c call
+    pushToStack eax
+
     mov byte[_carry],0      ;reset the carry
     mov dword[_prev],0      ;prev init to null
-    mov dword[_result], 0   ;result will point to the address to push, it's now null
-
     ;loop starts here
-    %%whileLoop:
-        mov byte [_valx],0                  ;init valx to 0
-        mov byte [_valy],0                  ; init valy to 0
-        cmp dword [_x],0                    ;check if x points to null (end of list1)
-        jz %%calcedX
-
-        ;valx = x.val 
-        mov eax, [_x]                       ;eax holds pointer to x-list link
+    %%whileLoop:            ;while( x != null | y != null | carry != 0)
+        ;mov eax, 0
+        mov eax, [_x]       ;eax holds address of x
+        add eax, [_y]       ;eax holds (address of X + address of y)
         mov ebx,0
-        mov bl, [eax]                       ;bl = x.val
-        mov byte[_valx], bl                 ;valx=x.val
+        mov bl, [_carry]
+        add eax, ebx        ;eax holds ((adrs of x) + (adrs of y) + carry)
+        cmp eax, 0          ;all positive so if their sum is 0 then they are individually zero
+        jz %%endWhileLoop
+        %%calcx:
+            mov eax, [_x]   ;eax holds address of x
+            cmp eax, 0      ;if x is null
+            jz %%xIsNull    ;then jmp
 
-        %%calcedX:
-            cmp dword [_y],0
-            jz %%calcedY
+            %%xIsNotNull:
+                mov bl, [eax] ;bl holds x.val
+                jmp %%calcy
 
-            ;valy = y.val 
-            mov eax, [_y]                   ;eax holds pointer to y-list link
-            mov ebx,0
-            mov bl, [eax]                   ;bl = y.val
-            mov byte[_valy], bl             ;valy=y.val
+            %%xIsNull:
+                mov bl, 0
+        %%calcy:
+            mov eax, [_y]   ;eax holds address of y
+            cmp eax, 0      ;if x is null
+            jz %%yIsNull    ;then jmp
 
-        %%calcedY:
-            ;;check if both x and y are null
-            mov eax, [_x]
-            add eax, [_y]
-            cmp eax, 0                      ;check if x and y are BOTH null
-            jz %%finishIterating            ;still have to add the carry!
+            %%yIsNotNull:
+                mov cl, [eax] ;cl holds y.val
+                jmp %%applyValues
 
-            mov ecx,0
-            mov cl, [_valx]
-            add cl, [_valy]
-            add cl, [_carry]
-            mov byte[_valz],cl
-            cmp cl, 0x10
-            jge %%carry
-            jmp %%dontCarry
+            %%yIsNull:
+                mov cl, 0
+
+        %%applyValues:          ;bl holds x.val, cl holds y.val
+             add bl, cl         ;bl holds x.val + y.val
+             add bl, [_carry]   ;bl = x.val + y.val + carry
+             cmp bl, 0x10
+             jge %%carry
+
+            %%dontCarry:
+                mov byte[_carry],0 ;set carry to zero
+                jmp %%carryOrNot
+
+            %%carry:
+                mov byte[_carry],1      ;set carry to 1
+                sub bl, 0x10            ;update the value
+                jmp %%carryOrNot
+
+            %%carryOrNot:
+                mov eax, [_curr]        ;eax holds address of curr
+                mov byte[eax],bl        ;curr.value = bl = (x.val+y.val+carry)%0x10
+                mov dword[_prev], eax   ;prev = curr
+                push 1
+                push 5
+                call calloc             ;eax should hold pointer to newly allocated mem
+                mov dword[_curr],eax    ;curr = adrs new link()
+                add esp, 8              ;reset stack pointer after c call
+                mov ecx, [_prev]        ;ecx = adrs of prev
+                mov dword[ecx +1],eax   ;prev.next = curr
+                
+                ;;;now we advance x and y if they are not null
+                cmp dword[_x],0         ;check if x = null
+                jz %%checkAdvancey
+
+                %%advancex:
+                    mov eax, [_x]       ;eax = address of x
+                    mov eax, [eax+1]    ;eax = x.next
+                    mov dword[_x],eax   ;x=x.next
+                %%checkAdvancey:
+                    cmp dword[_y],0     ;check if y is null
+                    jz %%whileLoop
+                %%advancey:
+                    mov eax, [_y]       ;eax = address of x
+                    mov eax, [eax+1]    ;eax = x.next
+                    mov dword[_y],eax   ;x=x.next
+                    jmp %%whileLoop                
         
-        %%carry:
-            mov byte[_carry],1
-            sub byte[_valz], 0x10
-            jmp %%carryOrNot
-
-        %%dontCarry:
-            mov byte[_carry],0
-            jmp %%carryOrNot
-
-        %%carryOrNot:
-            ;new head points to old head
-            push 1
-            push 5
-            call calloc                     ;eax should hold pointer to newly allocated mem
-            add esp, 8
-            mov ebx, [_result]
-            cmp ebx, 0 
-            jnz %%skip
-            mov dword[_result], eax
-            pushToStack eax
-
-        %%skip:
-            mov dword [_next], eax          ;next holds address of new link
-            mov cl, [_valz]                 ;cl = currValue
-            mov edx, [_next]                ;edx hold address of new link 
-            mov byte[edx], cl               ;newLink.value = cl = newValue
-            mov eax, [_prev]                ;eax = pointer to prev
-            mov dword[edx+1],0              ;newLink.next = null
-            mov dword[eax+1], edx           ;prev.next = address of new link
-            mov dword [_prev], edx          ;prev = new link
-            jmp %%whileLoop
-
-        %%finishIterating:
-            cmp byte[_carry], 0
-            jz %%endOfAdd
-            ;;create extra link for the carry
-            push 1
-            push 5
-            call calloc                     ;eax should hold pointer to newly allocated mem
-            add esp, 8
-            mov dword [_next], eax          ;next holds address of new link
-            mov cl, 1                       ;cl = currValue
-            mov edx, [_next]                ;edx hold address of new link 
-            mov byte[edx], cl               ;newLink.value = cl = newValue
-            mov eax, [_prev]                ;eax = pointer to prev
-            mov dword[edx+1],0              ;newLink.next = null
-            mov dword[eax+1], edx           ;prev.next = address of new link
-            mov dword [_prev], edx          ;prev = new link
+        %%endWhileLoop:
+            ;;first free last link we dont need
+            mov eax, [_curr]    ;eax = curr
+            push eax
+            call free
+            add esp, 4          ;reset stack pointer after c call
+            mov eax, [_prev]    ;eax = adrs of prev
+            mov dword[eax+1],0  ;prev.next = null
 
     %%endOfAdd:
 
@@ -321,6 +326,14 @@ section .text
 
 %macro numHexaDigits 0
  
+%endmacro
+
+%macro testPrint 0
+        mov edx, 10          ;edx = numBytes to write
+        mov ecx, _testMsg      ;ecx = char (buffer)
+        mov ebx, 1          ;ebx = stdout
+        mov eax, 4          ;eax = sys_write op code
+        int 0x80            ;call the kernel to write numBytes to victim
 %endmacro
 
 
