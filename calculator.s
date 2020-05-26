@@ -12,7 +12,8 @@ section .rodata
 section .bss
     _carry: resb 1
     _operandStack: resd 0xFF
-    _topOfStack: resd 1         
+    _topOfStack: resd 1  
+    _size: resd 0       
     _result: resd 1
     _inputBuffer: resb 80
     _x: resd 1 ;pointer to link
@@ -32,6 +33,7 @@ section .data
     _valx: db 0
     _valy: db 0
     _valz: db 0
+    _debug: db 0
 
 
 section .text
@@ -303,6 +305,214 @@ section .text
     %%endOfAdd:
 %endmacro
 
+%macro bitwiseOr 0
+    popFromStack
+    mov eax, [_result]
+    mov dword[_x],eax       ;x hold address of 1st head
+    popFromStack
+    mov eax, [_result]
+    mov dword[_y],eax       ;y hold address of 2nd head
+
+    push 1
+    push 5
+    call calloc             ;eax should hold pointer to newly allocated mem
+    mov dword[_curr],eax    ;curr = new link() adrs
+    add esp, 8              ;reset stack pointer after c call
+    pushToStack eax
+
+    mov dword[_prev],0      ;prev init to null
+    ;loop starts here
+    %%whileLoop:            ;while( x != null | y != null | carry != 0)
+        ;mov eax, 0
+        mov eax, [_x]       ;eax holds address of x
+        add eax, [_y]       ;eax holds (address of X + address of y)
+        cmp eax, 0          ;all positive so if their sum is 0 then they are individually zero
+        jz %%endWhileLoop
+        %%calcx:
+            mov eax, [_x]   ;eax holds address of x
+            cmp eax, 0      ;if x is null
+            jz %%xIsNull    ;then jmp
+
+            %%xIsNotNull:
+                mov bl, [eax] ;bl holds x.val
+                jmp %%calcy
+
+            %%xIsNull:
+                mov bl, 0
+        %%calcy:
+            mov eax, [_y]   ;eax holds address of y
+            cmp eax, 0      ;if x is null
+            jz %%yIsNull    ;then jmp
+
+            %%yIsNotNull:
+                mov cl, [eax] ;cl holds y.val
+                jmp %%applyValues
+
+            %%yIsNull:
+                mov cl, 0
+
+        %%applyValues:              ;bl holds x.val, cl holds y.val
+            or bl, cl             ;bl holds x.val & y.val
+            mov eax, [_curr]        ;eax holds address of curr
+            mov byte[eax],bl        ;curr.value = bl = (x.val+y.val+carry)%0x10
+            mov dword[_prev], eax   ;prev = curr
+            push 1
+            push 5
+            call calloc             ;eax should hold pointer to newly allocated mem
+            mov dword[_curr],eax    ;curr = adrs new link()
+            add esp, 8              ;reset stack pointer after c call
+            mov ecx, [_prev]        ;ecx = adrs of prev
+            mov dword[ecx +1],eax   ;prev.next = curr
+            
+            ;;;now we advance x and y if they are not null
+            cmp dword[_x],0         ;check if x = null
+            jz %%checkAdvancey
+                %%advancex:
+                    mov eax, [_x]       ;eax = address of x
+                    mov eax, [eax+1]    ;eax = x.next
+                    mov dword[_x],eax   ;x=x.next
+                %%checkAdvancey:
+                    cmp dword[_y],0     ;check if y is null
+                    jz %%whileLoop
+                %%advancey:
+                    mov eax, [_y]       ;eax = address of x
+                    mov eax, [eax+1]    ;eax = x.next
+                    mov dword[_y],eax   ;x=x.next
+                    jmp %%whileLoop                
+        
+        %%endWhileLoop:
+            ;;first free last link we dont need
+            mov eax, [_curr]    ;eax = curr
+            push eax
+            call free
+            add esp, 4          ;reset stack pointer after c call
+            mov eax, [_prev]    ;eax = adrs of prev
+            mov dword[eax+1],0  ;prev.next = null
+
+    %%endOfAnd:
+%endmacro
+
+%macro bitwiseAnd 0
+    popFromStack
+    mov eax, [_result]
+    mov dword[_x],eax       ;x hold address of 1st head
+    popFromStack
+    mov eax, [_result]
+    mov dword[_y],eax       ;y hold address of 2nd head
+
+    push 1
+    push 5
+    call calloc             ;eax should hold pointer to newly allocated mem
+    mov dword[_curr],eax    ;curr = new link() adrs
+    add esp, 8              ;reset stack pointer after c call
+    pushToStack eax
+
+    mov dword[_prev],0      ;prev init to null
+    ;loop starts here
+    %%whileLoop:            ;while( x != null | y != null | carry != 0)
+        ;mov eax, 0
+        mov eax, [_x]       ;eax holds address of x
+        add eax, [_y]       ;eax holds (address of X + address of y)
+        cmp eax, 0          ;all positive so if their sum is 0 then they are individually zero
+        jz %%endWhileLoop
+        %%calcx:
+            mov eax, [_x]   ;eax holds address of x
+            cmp eax, 0      ;if x is null
+            jz %%xIsNull    ;then jmp
+
+            %%xIsNotNull:
+                mov bl, [eax] ;bl holds x.val
+                jmp %%calcy
+
+            %%xIsNull:
+                mov bl, 0
+        %%calcy:
+            mov eax, [_y]   ;eax holds address of y
+            cmp eax, 0      ;if x is null
+            jz %%yIsNull    ;then jmp
+
+            %%yIsNotNull:
+                mov cl, [eax] ;cl holds y.val
+                jmp %%applyValues
+
+            %%yIsNull:
+                mov cl, 0
+
+        %%applyValues:              ;bl holds x.val, cl holds y.val
+            and bl, cl             ;bl holds x.val & y.val
+            mov eax, [_curr]        ;eax holds address of curr
+            mov byte[eax],bl        ;curr.value = bl = (x.val+y.val+carry)%0x10
+            mov dword[_prev], eax   ;prev = curr
+            push 1
+            push 5
+            call calloc             ;eax should hold pointer to newly allocated mem
+            mov dword[_curr],eax    ;curr = adrs new link()
+            add esp, 8              ;reset stack pointer after c call
+            mov ecx, [_prev]        ;ecx = adrs of prev
+            mov dword[ecx +1],eax   ;prev.next = curr
+            
+            ;;;now we advance x and y if they are not null
+            cmp dword[_x],0         ;check if x = null
+            jz %%checkAdvancey
+                %%advancex:
+                    mov eax, [_x]       ;eax = address of x
+                    mov eax, [eax+1]    ;eax = x.next
+                    mov dword[_x],eax   ;x=x.next
+                %%checkAdvancey:
+                    cmp dword[_y],0     ;check if y is null
+                    jz %%whileLoop
+                %%advancey:
+                    mov eax, [_y]       ;eax = address of x
+                    mov eax, [eax+1]    ;eax = x.next
+                    mov dword[_y],eax   ;x=x.next
+                    jmp %%whileLoop                
+        
+        %%endWhileLoop:
+            ;;first free last link we dont need
+            mov eax, [_curr]    ;eax = curr
+            push eax
+            call free
+            add esp, 4          ;reset stack pointer after c call
+            mov eax, [_prev]    ;eax = adrs of prev
+            mov dword[eax+1],0  ;prev.next = null
+
+    %%endOfAnd:
+
+%endmacro
+
+;uses x
+%macro incTop 0
+    popFromStack
+    mov eax, [_result]
+    mov dword[_x],eax       ;x hold address of 1st head
+    pushToStack eax
+
+    %%whileLoop: ;while(carry != 0)
+        mov eax, [_x]
+        add byte[eax], 1
+        cmp byte[eax], 0x10
+        jl %%endWhileLoop
+        mov byte[eax],0
+
+    %%advancex:
+        mov eax, [_x]       ;eax = address of x
+        mov eax, [eax+1]    ;eax = x.next
+        cmp eax, 0          ;check if x.next = null
+        jz %%addMsb
+        mov dword[_x],eax   ;x=x.next
+        jmp %%whileLoop
+    
+    %%addMsb:
+        push 1
+        push 5
+        call calloc             ;eax should hold pointer to newly allocated mem
+        add esp, 8              ;reset stack pointer after c call
+        mov ebx, [_x]           ; ebx holds address of x
+        mov dword[ebx+1],eax    ;x.next = eax = calloc
+        mov byte[eax], 1        ;x.next.value =1
+    %%endWhileLoop:
+%endmacro
+
 %macro pushToStack 1
     ;; %1 is pointer to push
     mov ebx, [_topOfStack]      ;ebx = address of current top element
@@ -314,16 +524,34 @@ section .text
 
 ;;pops top element into result register and decrements top of stack
 %macro popFromStack 0
+    cmp dword[_size],0
+    jle %%underFlow
+
     mov eax, [_topOfStack]      ;eax = address of top-most element
     mov eax, [eax]              ;eax = value of top-most element = address of some list's head
     mov dword[_result], eax 
     sub dword[_topOfStack], 4
+    sub dword[_size],1
+    jmp %%complete
+
+    %%underFlow:
+        mov edx, 49          ;edx = numBytes to write
+        mov ecx, _underFlowMsg      ;ecx = char (buffer)
+        mov ebx, 1          ;ebx = stdout
+        mov eax, 4          ;eax = sys_write op code
+        int 0x80            ;call the kernel to write numBytes to victim
+        mov dword[_result],0
+    
+    %%complete:
+
 %endmacro
 
 ;;completed
 %macro popAndPrint 0
     popFromStack                ;popped list is now in result
     mov eax, [_result]          ;eax = address of the lists head
+    cmp eax, 0
+    jz %%endPopAndPrint
     mov dword[_curr],eax        ;curr = list.head address
     push 0;
     %%pushWhileLoop:
@@ -370,10 +598,30 @@ section .text
         mov ebx, 1          ;ebx = stdout
         mov eax, 4          ;eax = sys_write op code
         int 0x80            ;call the kernel to write numBytes to victim
+    %%endPopAndPrint:
 %endmacro
 
 %macro numHexaDigits 0
- 
+    popFromStack
+    mov eax, [_result]
+    mov dword[_y],eax       ;x hold address of 1st head
+
+    ;push new list of value 0 to opStack
+    push 1
+    push 5
+    call calloc             ;eax should hold pointer to newly allocated mem
+    add esp, 8              ;reset stack pointer after c call
+    pushToStack eax         ;top of opStack holds result
+
+    %%whileLoop: ;while(cuur != null)
+        mov eax, [_y]       ;eax = address of y
+        mov eax, [eax+1]    ;eax = y.next
+        mov dword[_y],eax   ;y=y.next
+        incTop
+        cmp dword[_y],0     ;check if y is null
+        jz %%endWhileLoop
+        jmp %%whileLoop  
+    %%endWhileLoop:              
 %endmacro
 
 %macro testPrint 0
@@ -386,6 +634,10 @@ section .text
 
 
 main:
+    ;check if the debug is on
+    cmp dword[esp+8], '-'
+
+
     ;set topOfStack to hold address of stack-1
     mov eax, _operandStack
     sub eax,4
@@ -408,18 +660,44 @@ main:
         cmp al, 'd'
         jz calcDuplicate
 
+        cmp al, '&'
+        jz calcAnd
+
+        cmp al, '|'
+        jz calcOr
+
+        cmp al, 'n'
+        jz calcCount
+
         jmp receiveOperand
 
+    calcCount:
+        inc dword[_numOperations]
+        numHexaDigits
+        jmp runloop
+
+    calcAnd:
+        inc dword[_numOperations]
+        bitwiseAnd
+        jmp runloop
+
+    calcOr:
+        inc dword[_numOperations]
+        bitwiseOr
+        jmp runloop
+
     calcDuplicate:
+        inc dword[_numOperations]
         duplicate
         jmp runloop
 
-
     calcPrint:
+        inc dword[_numOperations]
         popAndPrint
         jmp runloop
 
     calcAdd:
+        inc dword[_numOperations]
         myAdd
         jmp runloop
 
@@ -429,6 +707,9 @@ main:
         jmp runloop
 
     endOfProgram:
+        push _hexaFormat
+        push _numOperations
+        call printf
         mov eax, [_numOperations] 
         
 
