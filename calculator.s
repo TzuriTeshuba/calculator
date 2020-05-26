@@ -247,12 +247,60 @@ section .text
 
 %endmacro
 
-%macro clearInputBuffer 0
+%macro duplicate 0
+    popFromStack
+    mov eax, [_result]
+    mov dword[_x],eax       ;x hold address of 1st head
+    pushToStack eax
 
-%endmacro
+    push 1
+    push 5
+    call calloc             ;eax should hold pointer to newly allocated mem
+    mov dword[_curr],eax    ;curr = new link() adrs
+    add esp, 8              ;reset stack pointer after c call
+    pushToStack eax
 
-%macro clearInputBuffer 1
+    mov dword[_prev],0      ;prev init to null
+    ;loop starts here
+    %%whileLoop:            ;while( x != null)
+        cmp dword[_x], 0    
+        jz %%endWhileLoop
+        %%calcx:
+            mov eax, [_x]   ;eax holds address of x
+            mov ebx, 0
+            mov bl, [eax] ;bl holds x.val
 
+            %%carryOrNot:
+                mov eax, [_curr]        ;eax holds address of curr
+                mov byte[eax],bl        ;curr.value = bl = x.val
+                mov dword[_prev], eax   ;prev = curr
+                push 1
+                push 5
+                call calloc             ;eax should hold pointer to newly allocated mem
+                mov dword[_curr],eax    ;curr = adrs new link()
+                add esp, 8              ;reset stack pointer after c call
+                mov ecx, [_prev]        ;ecx = adrs of prev
+                mov dword[ecx +1],eax   ;prev.next = curr
+                
+                ;;;now we advance x
+
+                %%advancex:
+                    mov eax, [_x]       ;eax = address of x
+                    mov eax, [eax+1]    ;eax = x.next
+                    mov dword[_x],eax   ;x=x.next
+                    jmp %%whileLoop
+               
+        
+        %%endWhileLoop:
+            ;;first free last link we dont need
+            mov eax, [_curr]    ;eax = curr
+            push eax
+            call free
+            add esp, 4          ;reset stack pointer after c call
+            mov eax, [_prev]    ;eax = adrs of prev
+            mov dword[eax+1],0  ;prev.next = null
+
+    %%endOfAdd:
 %endmacro
 
 %macro pushToStack 1
@@ -357,7 +405,15 @@ main:
         cmp al, '+'
         jz calcAdd
 
+        cmp al, 'd'
+        jz calcDuplicate
+
         jmp receiveOperand
+
+    calcDuplicate:
+        duplicate
+        jmp runloop
+
 
     calcPrint:
         popAndPrint
