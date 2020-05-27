@@ -12,7 +12,8 @@ section .rodata
 section .bss
     _carry: resb 1
     _operandStack: resd 0xFF
-    _topOfStack: resd 1         
+    _topOfStack: resd 1  
+    _size: resd 0       
     _result: resd 1
     _inputBuffer: resb 80
     _x: resd 1 ;pointer to link
@@ -28,7 +29,6 @@ section .bss
 section .data
     _stackCapacity: dd 5
     _numOperations: dd 0
-    _size: dd 0
     _idx: dd 0
     _valx: db 0
     _valy: db 0
@@ -103,6 +103,8 @@ section .text
 
 %endmacro
 
+
+
 ;;completed
 %macro listify 0
     mov dword [_oldHead], 0
@@ -111,11 +113,11 @@ section .text
         ;;check condition
         mov eax, [_idx]
         mov ebx, [_inputLength]
-        sub ebx, eax    ;ebx = length - idx
+        sub ebx, eax                    ;ebx = length - idx
         cmp ebx, 0       
         jle %%endWhileLoop
         ;read val from buffer         
-        add eax, _inputBuffer            ;let eax = pointer to buffer[idx]
+        add eax, _inputBuffer           ;let eax = pointer to buffer[idx]
         mov ecx, 0
         mov cl, [eax]                   ;ecx = 0x000000buffer[idx]
         mov byte [_char],cl             ;let char = buffer[idx]
@@ -126,7 +128,7 @@ section .text
         add esp, 8
         mov dword [_newHead], eax       ;eax = pointer to newHead
         mov cl, [_char]                 ;cl = currValue
-        mov edx, [_newHead]
+        mov edx, [_newHead]             ;edx = adrs of newHead
         mov byte[edx], cl               ;newHead.value = cl = newValue
         mov eax, [_oldHead]             ;eax = pointer to oldHead
         mov dword[edx+1],eax            ;newHead.next = eax = pntr to oldHead
@@ -138,7 +140,8 @@ section .text
     
     %%endWhileLoop:
         pushToStack [_newHead]
-        removeTrailingZeros
+        ;mov eax, dword[_newHead]
+        ;removeTrailingZeros eax
 
 %endmacro
 
@@ -514,34 +517,13 @@ section .text
     %%endWhileLoop:
 %endmacro
 
-;NOT TESTED
-;attempts to pop 2 elements, first to x, then to y.
-;in case of failure, notifies the user and returns stack to initial state
-%macro tryDoublePop 0
-    popFromStack
-    mov eax, [_result]
-    cmp eax, 0
-    jz %%endTryDoublePop
-    mov dword[_x],eax       ;x hold address of 1st head
-    popFromStack
-    mov eax, [_result]
-    cmp eax, 0
-    jz %%putBackX
-    mov dword[_y],eax       ;y hold address of 2nd head
-
-    %%putBackX:
-        mov eax, [_x]
-        pushToStack eax
-
-    %%endTryDoublePop:
-%endmacro
-
 %macro pushToStack 1
     ;; %1 is pointer to push
-    mov eax, [_size]
-    mov ebx, [_stackCapacity]
-    cmp eax, ebx
-    je %%overFlow
+    ;first check if theres space
+    ;mov eax, [_size]
+    ;mov ebx, [_stackCapacity]
+    ;cmp eax, ebx    ;if equal then out of room
+    ;jz %%overFlow
 
     mov ebx, [_topOfStack]      ;ebx = address of current top element
     add ebx, 4                  ;ebx = address of first available place in op stack
@@ -552,7 +534,7 @@ section .text
     jmp %%complete
 
     %%overFlow:
-        mov edx, 30          ;edx = numBytes to write
+        mov edx, 69          ;edx = numBytes to write
         mov ecx, _overFlowMsg      ;ecx = char (buffer)
         mov ebx, 1          ;ebx = stdout
         mov eax, 4          ;eax = sys_write op code
@@ -565,8 +547,8 @@ section .text
 
 ;;pops top element into result register and decrements top of stack
 %macro popFromStack 0
-    cmp dword[_size],0
-    jle %%underFlow
+    ;cmp dword[_size],0
+    ;jle %%underFlow
 
     mov eax, [_topOfStack]      ;eax = address of top-most element
     mov eax, [eax]              ;eax = value of top-most element = address of some list's head
@@ -585,12 +567,6 @@ section .text
     
     %%complete:
 
-%endmacro
-
-%macro peekStack 0
-    mov eax, [_topOfStack]
-    mov eax, [eax]
-    mov dword[_result],eax
 %endmacro
 
 ;;completed
@@ -670,60 +646,6 @@ section .text
         jmp %%whileLoop  
     %%endWhileLoop:              
 %endmacro
-;precondition - number/list of interest is at top of stack
-%macro removeTrailingZeros 0
-    peekStack
-    mov eax, [_result]      ;eax = top element = address of top list head
-    mov dword[_curr], eax   ;curr = adrs of list head
-    mov dword[_x],eax       ;x reps last non-zero (LNZ)
-
-    %%whileLoop: ;while(curr != null)
-        ;check condition
-        cmp dword[_curr],0
-        jz %%endWhileLoop
-
-        mov eax, [_curr]    ;eax = adrs of curr
-        mov bl, [eax]       ;bl = curr.val
-        cmp bl, 0
-        jg %%updateLNZ
-        jmp %%zeroOrNot
-
-        %%updateLNZ:
-            mov dword[_x], eax  ;LNZ holds address of curr
-        %%zeroOrNot:
-            mov ebx,[eax +1]    ;curr = curr.next
-            mov dword[_curr],ebx
-            jmp %%whileLoop
-    %%endWhileLoop:
-        mov eax, [_x]       ;eax = adrs of LNZ
-        mov ebx, [eax +1]   ;ebx = adrs of first trailing zero link (or null)
-        mov dword[eax+1],0  ;disconnect trailing zeros
-        freeList ebx        ;free sub-list of trailing zeros
-%endmacro
-
-;use curr and next to free links one by one recursively
-%macro freeList 1
-    mov eax, %1             ;eax  holds adrs of head of list to free
-    mov dword[_curr],eax    ;curr holds adrs of head of list to free
-    mov eax, [eax+1]        ;eax  holds adrs of head.next
-    mov dword[_next],eax    ;next holds adrs of head.next
-
-    %%whileLoop: ;while(curr != null)
-        ;check condition
-        cmp dword[_curr],0  ;check if curr is null
-        jz %%endWhileLoop
-
-        mov eax, [_curr]        ;eax holds adrs of curr
-        mov eax, [eax+1]        ;eax holds adrs of curr.next
-        mov dword[_next],eax    ;next = curr.next
-        push dword[_curr]       ;push curr for free()
-        call free               ;free(curr)
-        add esp, 4              ;return stack pointer
-        mov eax, [_next]        ;eax = adrs of next
-        mov dword[_curr],eax    ;curr = next
-        jmp %%whileLoop
-    %%endWhileLoop:
-%endmacro
 
 %macro testPrint 0
         mov edx, 10          ;edx = numBytes to write
@@ -733,77 +655,68 @@ section .text
         int 0x80            ;call the kernel to write numBytes to victim
 %endmacro
 
-;TODO
-;%1 holds char* for capacity
-%macro changeCapacity 1
-    mov ecx, %1
-    %%whileLoop:
-		mov edx, 0					;reset edx
-		mov eax, 0
-		mov al,[ecx+ebx]		;store the next byte from the input in al
-		mov byte[_char], al			;place the next char of the sring in char
-		cmp byte[_char], 0			;if the char is null or next line dont do anything
-		je %%endWhileLoop
-		cmp byte[_char], 10
-		je %%endWhileLoop
-		mov eax, dword[_stackCapacity]			;put sum in eax
-		mov edx, 16					;put 16 in edx - the multyplier
-		mul edx						;multiply sum by 16, eax=lower part of product  edx=upper part of product
-		mov dword [_stackCapacity], eax		;keep the product in capacity
+;precondition - number/list of interest is in result
+%macro removeTrailingZeros 1
+    mov eax, %1
+    mov dword[_curr], eax 
+    mov dword[_x],eax   ;x reps last non-zero (LNZ)
 
-        cmp byte[_char], 60     ;digits less than 60, letters greater than 60
-        jl %%ifDigit
-        jmp %%ifLetter
-		mov edx, 0					;get rid of garbage
-		mov dl, byte[_char]			;get ascii val of char into char
+    %%whileLoop: ;while(curr != null)
+        ;check condition
+        cmp dword[_curr],0
+        jz %%endWhileLoop
 
-        %%ifDigit:
-            sub dl, 48
-            jmp %%regardless
-            
-        %%ifLetter:
-            sub dl, 55
-            jmp %%regardless   
+        mov eax, [_curr] ;eax = adrs of curr
+        mov bl, [eax] ;bl = curr.val
+        cmp bl, 0
+        jg %%nonZero
+        jmp %%zeroOrNot
 
-        %%regardless:
-            add dword[_stackCapacity], edx			;sum = sum+char, edx still holds the right value of char
-            inc ebx
+        %%nonZero:
+            mov dword[_x], eax  ;x holds address of curr
+        %%zeroOrNot:
+            mov ebx,[eax +1] ;curr = curr.next
+            mov dword[_curr],ebx
             jmp %%whileLoop
     %%endWhileLoop:
-
+        mov eax, [_x]   ;eax = adrs of LNZ
+        mov eax, [eax +1] ;eax = first trailing zero link (or null)
+        freeList eax
 %endmacro
 
+;use curr and next to free links one by one recursively
+%macro freeList 1
+    mov eax, %1
+    mov dword[_curr],eax
+    mov eax, [eax+1]
+    mov dword[_next],eax
+
+    %%whileLoop: ;while(curr != null)
+        ;check condition
+        cmp dword[_curr],0
+        jz %%endWhileLoop
+
+        push dword[_curr]
+        call free
+        add esp, 4
+        mov eax, [_next]
+        mov dword[_curr],eax
+        mov eax, [eax+1]
+        mov dword[_next],eax
+        jmp %%whileLoop
+    %%endWhileLoop:
+%endmacro
+
+
 main:
-    mov eax, [esp+8]    ;eax = argCount
-    cmp eax, 1          ;check if ony arg is progName
-    testPrint
-    jnz runloop
-    testPrint
-
-
-
-    ;arg order progName, capacity, debug
     ;check if the debug is on
-    ;mov eax, [esp+8]    ;eax = argCount
-    ;cmp eax, 1          ;check if ony arg is progName
-    ;jz beginning
-    ;mov ebx, [esp+12]   ;ebx = adress of first arg
-    ;cmp dword[ebx],'-'  ;check if 1st arg is -d debug
-    ;jnz firstArgIsCapacity
-    ;mov byte[_debug],1  ;set debug = true
-    ;jmp beginning
-;
-    ;firstArgIsCapacity:
-    ;    ;changeCapacity ebx
-    ;    cmp dword[esp+8],3
-    ;    jnz beginning
-    ;    mov byte[_debug],1
-;
-    ;beginning:
-    ;    ;set topOfStack to hold address of stack-1
-    ;    mov eax, _operandStack
-    ;    sub eax,4
-    ;    mov dword [_topOfStack],eax
+    cmp dword[esp+8], '-'
+
+
+    ;set topOfStack to hold address of stack-1
+    mov eax, _operandStack
+    sub eax,4
+    mov dword [_topOfStack],eax
 
     runloop:
 
@@ -813,7 +726,7 @@ main:
         cmp al, 'q'
         jz endOfProgram
 
-        cmp al, 'c'
+        cmp al, 'x'
         jz custom
 
         cmp al, 'p'
@@ -835,9 +748,8 @@ main:
         jz calcCount
 
         jmp receiveOperand
-
     custom:
-        tryDoublePop
+        popFromStack
         jmp runloop
 
     calcCount:
@@ -883,3 +795,4 @@ main:
         
 
 ;_init:
+
