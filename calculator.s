@@ -24,11 +24,12 @@ section .bss
     _newHead: resd 1
     _oldHead: resd 1
     _inputLength: resd 1
+    _size: resd 1
 
 section .data
     _stackCapacity: dd 5
     _numOperations: dd 0
-    _size: dd 0
+    ;_size: dd 0
     _idx: dd 0
     _valx: db 0
     _valy: db 0
@@ -528,6 +529,7 @@ section .text
     cmp eax, 0
     jz %%putBackX
     mov dword[_y],eax       ;y hold address of 2nd head
+    jmp %%endTryDoublePop
 
     %%putBackX:
         mov eax, [_x]
@@ -538,6 +540,7 @@ section .text
 
 %macro pushToStack 1
     ;; %1 is pointer to push
+    mov ecx, %1
     mov eax, [_size]
     mov ebx, [_stackCapacity]
     cmp eax, ebx
@@ -546,13 +549,13 @@ section .text
     mov ebx, [_topOfStack]      ;ebx = address of current top element
     add ebx, 4                  ;ebx = address of first available place in op stack
     mov [_topOfStack],ebx       ;top of stack holds address of first available space
-    mov eax, %1                 ;eax = arg1 = pointer to push
+    mov eax, ecx                 ;eax = %1 = arg1 = pointer to push
     mov dword[ebx], eax         ;first available spot filled filled arg1
     add dword[_size],1
     jmp %%complete
 
     %%overFlow:
-        mov edx, 30          ;edx = numBytes to write
+        mov edx, 50          ;edx = numBytes to write
         mov ecx, _overFlowMsg      ;ecx = char (buffer)
         mov ebx, 1          ;ebx = stdout
         mov eax, 4          ;eax = sys_write op code
@@ -566,7 +569,7 @@ section .text
 ;;pops top element into result register and decrements top of stack
 %macro popFromStack 0
     cmp dword[_size],0
-    jle %%underFlow
+    je %%underFlow
 
     mov eax, [_topOfStack]      ;eax = address of top-most element
     mov eax, [eax]              ;eax = value of top-most element = address of some list's head
@@ -598,7 +601,7 @@ section .text
     popFromStack                ;popped list is now in result
     mov eax, [_result]          ;eax = address of the lists head
     cmp eax, 0
-    jz %%endPopAndPrint
+    jz %%eMsg
     mov dword[_curr],eax        ;curr = list.head address
     push 0;
     %%pushWhileLoop:
@@ -645,6 +648,10 @@ section .text
         mov ebx, 1          ;ebx = stdout
         mov eax, 4          ;eax = sys_write op code
         int 0x80            ;call the kernel to write numBytes to victim
+        jmp %%endPopAndPrint
+    %%eMsg:
+        testPrint
+
     %%endPopAndPrint:
 %endmacro
 
@@ -704,6 +711,8 @@ section .text
 ;use curr and next to free links one by one recursively
 %macro freeList 1
     mov eax, %1             ;eax  holds adrs of head of list to free
+    cmp eax, 0
+    jz %%endWhileLoop
     mov dword[_curr],eax    ;curr holds adrs of head of list to free
     mov eax, [eax+1]        ;eax  holds adrs of head.next
     mov dword[_next],eax    ;next holds adrs of head.next
@@ -751,7 +760,7 @@ section .text
 		mul edx						;multiply sum by 16, eax=lower part of product  edx=upper part of product
 		mov dword [_stackCapacity], eax		;keep the product in capacity
 
-        cmp byte[_char], 60     ;digits less than 60, letters greater than 60
+        cmp byte[_char], 60         ;digits less than 60, letters greater than 60
         jl %%ifDigit
         jmp %%ifLetter
 		mov edx, 0					;get rid of garbage
@@ -774,13 +783,11 @@ section .text
 %endmacro
 
 main:
-    mov eax, [esp+8]    ;eax = argCount
-    cmp eax, 1          ;check if ony arg is progName
-    testPrint
-    jnz runloop
-    testPrint
-
-
+    ;mov eax, [esp+8]    ;eax = argCount
+    ;cmp eax, 1          ;check if ony arg is progName
+    ;testPrint
+    ;jnz runloop
+    ;testPrint
 
     ;arg order progName, capacity, debug
     ;check if the debug is on
@@ -800,13 +807,15 @@ main:
     ;    mov byte[_debug],1
 ;
     ;beginning:
-    ;    ;set topOfStack to hold address of stack-1
-    ;    mov eax, _operandStack
-    ;    sub eax,4
-    ;    mov dword [_topOfStack],eax
+        ;set topOfStack to hold address of stack-1
+        mov eax, _operandStack
+        sub eax,4
+        mov dword [_topOfStack],eax
+
+        mov dword[_stackCapacity],5
+        mov dword[_size],0
 
     runloop:
-
         getUserInput
         mov eax, 0
         mov al, [_inputBuffer]   ;eax = LSByte
@@ -876,10 +885,10 @@ main:
         jmp runloop
 
     endOfProgram:
-        push _hexaFormat
-        push _numOperations
-        call printf
-        mov eax, [_numOperations] 
+        ;push _hexaFormat
+        ;push _numOperations
+        ;call printf
+        ;mov eax, [_numOperations] 
         
 
 ;_init:
