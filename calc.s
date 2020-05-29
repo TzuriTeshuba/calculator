@@ -6,6 +6,9 @@ section .rodata
     _format_string: db "%s", 10, 0	; format string
     _format_string2: db "%s",' '	; format string
 
+    _format_debugPush: db "pushed ", 0
+     _format_debugPop: db "popped ", 0
+
     _overFlowMsg: db 'Error: Operand Stack Overflow', 10,0
     _underFlowMsg: db 'Error: Insufficient Number of Arguments on Stack', 10, 0
     _testMsg: db 'checking', 10, 0
@@ -22,6 +25,7 @@ section .bss
     _char: resb 1
     _next: resd 1
     _curr: resd 1
+    _d_curr: resd 1
     _prev: resd 1
     _newHead: resd 1
     _oldHead: resd 1
@@ -58,7 +62,7 @@ section .text
 
 
 
-;*********************************** User Input *********************************
+;*********************************** User Input ************************************
 %macro getUserInput 0
     mov edx, 7              ;edx = numBytes
     mov ecx, _calcPrompt    ;ecx = calcPrompt
@@ -151,7 +155,7 @@ section .text
 
 %endmacro
 ;*********************************** END User Input *********************************
-;*********************************** Operations *********************************
+;*********************************** Operations *************************************
 ;;completed
 %macro popAndPrint 0
     popFromStack                ;popped list is now in result
@@ -603,7 +607,7 @@ section .text
     %%endWhileLoop:
 %endmacro
 
-;*********************************** END Operations *********************************
+;*********************************** END Operations ****************************************
 ;*********************************** Poppin and Pushin *************************************
 
 ;attempts to pop 2 elements, first to x, then to y. also stores them in toFree1 and toFree2
@@ -643,6 +647,7 @@ section .text
     mov dword[_result], eax 
     sub dword[_topOfStack], 4
     sub dword[_size],1
+    debug eax, _format_debugPop
     jmp %%complete
 
     %%underFlow:
@@ -671,11 +676,12 @@ section .text
     mov eax, ecx                 ;eax = %1 = arg1 = pointer to push
     mov dword[ebx], eax         ;first available spot filled filled arg1
     add dword[_size],1
+    debug ecx, _format_debugPush
     jmp %%complete
 
     %%overFlow:
         freeList ecx        ;free the list if it cant be pushed
-        mov edx, 50          ;edx = numBytes to write
+        mov edx, 30          ;edx = numBytes to write
         mov ecx, _overFlowMsg      ;ecx = char (buffer)
         mov ebx, 1          ;ebx = stdout
         mov eax, 4          ;eax = sys_write op code
@@ -692,8 +698,8 @@ section .text
     mov eax, [eax]
     mov dword[_result],eax
 %endmacro
-;*********************************** END Poppin and Pushin *********************************
-;*********************************** Destructors *********************************
+;****************************** END Poppin and Pushin *********************************
+;*********************************** Destructors **************************************
 ;precondition - number/list of interest is at top of stack
 %macro removeTrailingZeros 0
     peekStack
@@ -740,7 +746,6 @@ section .text
     mov eax, [_toFree2]
     freeList eax        ;free second list
 %endmacro
-
 %macro freeOne 0
     mov eax, [_toFree1]
     freeList eax
@@ -770,7 +775,74 @@ section .text
         jmp %%whileLoop
     %%endWhileLoop:
 %endmacro
-;*********************************** END Destructors *********************************
+;*********************************** END Destructors ***********************************
+
+;%1 is list, %2 string format
+%macro debug 2
+    mov eax, %1
+    cmp byte[_debug],0
+    jz %%endPopAndPrint
+    ;mov eax, %1          ;eax = address of the lists head
+    push eax
+    
+    mov edx, 7          ;edx = numBytes to write
+    mov ecx, %2         ;ecx = char (buffer)
+    mov ebx, 2          ;ebx = stderr
+    mov eax, 4          ;eax = sys_write op code
+    int 0x80            ;call the kernel to write numBytes to victim
+
+    pop eax          ;eax = address of the lists head
+    cmp eax, 0
+    jz %%endPopAndPrint
+    mov dword[_d_curr],eax        ;curr = list.head address
+    push 0;
+    %%pushWhileLoop:
+        ;while(next not null)push value to stack (seperately push last)
+        mov eax, [_d_curr]            ;ebx = address of curr
+        mov eax, [eax]              ;ebx = 0x0curr.value //SegFault
+        cmp al,9                    ;check if value reps letter decimal number
+        jle %%ifNumberBase
+        jmp %%ifLetterBase
+
+    %%ifNumberBase:
+        add al, 48
+        jmp %%regardlessBase
+
+    %%ifLetterBase:
+        add al, 55
+        jmp %%regardlessBase
+    
+    %%regardlessBase:
+        push eax    ;eax should have zero(s) as MSB!
+        mov eax, [_d_curr] ;eax = address of curr
+        mov eax,[eax+1] ;eax = address of curr.next
+        mov dword [_d_curr], eax ; curr points to address of curr.next
+        ;;now check if next is null
+        cmp eax,0 ;check if next's address is NULL
+        jnz %%pushWhileLoop
+        
+    %%printWhileLoop:
+        pop eax
+        cmp eax, 0          ;check if you popper NULL
+        jz %%popAndPrintEnd
+        mov [_char], al
+        mov edx, 1          ;edx = numBytes to write
+        mov ecx, _char      ;ecx = char (buffer)
+        mov ebx, 2          ;ebx = stderr
+        mov eax, 4          ;eax = sys_write op code
+        int 0x80            ;call the kernel to write numBytes to victim
+        jmp %%printWhileLoop 
+    %%popAndPrintEnd:
+        mov al, 10
+        mov byte[_char], al
+        mov edx, 1          ;edx = numBytes to write
+        mov ecx, _char      ;ecx = char (buffer)
+        mov ebx, 2          ;ebx = stderr
+        mov eax, 4          ;eax = sys_write op code
+        int 0x80            ;call the kernel to write numBytes to victim
+    %%endPopAndPrint:
+%endmacro
+
 
 %macro testPrint 0
         mov edx, 10          ;edx = numBytes to write
@@ -784,25 +856,28 @@ section .text
 ;%1 holds char* for capacity
 %macro changeCapacity 1
     mov ecx, %1
+    mov ebx, 0  ;ebx = index = 0
+    mov dword[_stackCapacity],0
     %%whileLoop:
 		mov edx, 0					;reset edx
 		mov eax, 0
-		mov al,[ecx+ebx]		;store the next byte from the input in al
+		mov al,[ecx+ebx]		    ;store the next byte from the input in al
 		mov byte[_char], al			;place the next char of the sring in char
 		cmp byte[_char], 0			;if the char is null or next line dont do anything
 		je %%endWhileLoop
 		cmp byte[_char], 10
 		je %%endWhileLoop
-		mov eax, dword[_stackCapacity]			;put sum in eax
+		        
+        mov eax, dword[_stackCapacity]			;put sum in eax
 		mov edx, 16					;put 16 in edx - the multyplier
 		mul edx						;multiply sum by 16, eax=lower part of product  edx=upper part of product
 		mov dword [_stackCapacity], eax		;keep the product in capacity
 
+		mov edx, 0					;get rid of garbage
+		mov dl, byte[_char]			;get ascii val of char into char
         cmp byte[_char], 60         ;digits less than 60, letters greater than 60
         jl %%ifDigit
         jmp %%ifLetter
-		mov edx, 0					;get rid of garbage
-		mov dl, byte[_char]			;get ascii val of char into char
 
         %%ifDigit:
             sub dl, 48
@@ -817,40 +892,39 @@ section .text
             inc ebx
             jmp %%whileLoop
     %%endWhileLoop:
-
 %endmacro
 
 main:
-    ;mov eax, [esp+8]    ;eax = argCount
-    ;cmp eax, 1          ;check if ony arg is progName
-    ;testPrint
-    ;jnz runloop
-    ;testPrint
+    ;push ebp
+    ;mov ebp, esp
+
+
+    mov eax, [esp+4]    ;eax = argCount
+    cmp eax, 1          ;check if ony arg is progName
+    je beginning
 
     ;arg order progName, capacity, debug
     ;check if the debug is on
-    ;mov eax, [esp+8]    ;eax = argCount
-    ;cmp eax, 1          ;check if ony arg is progName
-    ;jz beginning
-    ;mov ebx, [esp+12]   ;ebx = adress of first arg
-    ;cmp dword[ebx],'-'  ;check if 1st arg is -d debug
-    ;jnz firstArgIsCapacity
-    ;mov byte[_debug],1  ;set debug = true
-    ;jmp beginning
+    mov ebx, [esp+8]   ;ebx = argv = char**
+    mov ecx, [ebx+4]      ;ecx=2nd arg pointer
+    cmp byte[ecx],'-'  ;check if 1st arg is -d debug
+    jnz firstArgIsCapacity
+    mov byte[_debug],1  ;set debug = true
+    jmp beginning       ;if 1st arg is debug, then no cpacity is specified
 
-    ;firstArgIsCapacity:
-    ;    ;changeCapacity ebx
-    ;    cmp dword[esp+8],3
-    ;    jnz beginning
-    ;    mov byte[_debug],1
+    firstArgIsCapacity:
+        changeCapacity ecx
+        cmp dword[esp+4],3  ;if we have anoher arhs, it must be debug
+        jnz beginning
+        mov byte[_debug],1
 
-    ;beginning:
+    beginning:
         ;set topOfStack to hold address of stack-1
         mov eax, _operandStack
         sub eax, 4
         mov dword [_topOfStack],eax
 
-        mov dword[_stackCapacity],5
+        ;mov dword[_stackCapacity],5
         mov dword[_size],0
 
     runloop:
@@ -884,7 +958,7 @@ main:
         jmp receiveOperand
 
     custom:
-        tryDoublePop
+        testPrint
         jmp runloop
 
     calcCount:
@@ -924,10 +998,10 @@ main:
 
     endOfProgram:
         freeStack
-        ;push _hexaFormat
-        ;push _numOperations
-        ;call printf
-        ;mov eax, [_numOperations] 
+        push dword[_numOperations]
+        push _hexaFormat
+        call printf
+        add esp, 8
+        mov eax, [_numOperations] 
         
 
-;_init:
