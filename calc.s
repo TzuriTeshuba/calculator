@@ -152,6 +152,9 @@ section .text
     %%endWhileLoop:
         pushToStack [_newHead]
         removeTrailingZeros
+        peekStack   ;for debug...
+        mov eax, [_result]
+        debug eax, _format_debugPush
 
 %endmacro
 ;*********************************** END User Input *********************************
@@ -237,7 +240,11 @@ section .text
         cmp dword[_y],0     ;check if y is null
         jz %%endWhileLoop
         jmp %%whileLoop  
-    %%endWhileLoop: 
+    %%endWhileLoop:
+        ;now debug and free
+        peekStack
+        mov eax, [_result]
+        debug eax, _format_debugPush
         freeOne
 
     %%endNumHexaDigits:           
@@ -343,17 +350,25 @@ section .text
             add esp, 4          ;reset stack pointer after c call
             mov eax, [_prev]    ;eax = adrs of prev
             mov dword[eax+1],0  ;prev.next = null
+            peekStack           ;for debug...
+            mov eax, [_result]
+            debug eax, _format_debugPush
             freeBoth
     %%endOfAdd:
 %endmacro
 
 
 %macro duplicate 0
-    popFromStack
+    peekStack
     mov eax, [_result]
-    mov dword[_x],eax       ;x hold address of 1st head
-    pushToStack eax
-
+    mov dword[_x],eax
+    cmp dword[_size],0
+    jnz %%stackNotEmpty
+    stackIsEmpty:
+        popFromStack    ;just because it will print the error
+        jmp %%endOfAdd
+    
+    %%stackNotEmpty:
     push 1
     push 5
     call calloc             ;eax should hold pointer to newly allocated mem
@@ -484,6 +499,9 @@ section .text
             add esp, 4          ;reset stack pointer after c call
             mov eax, [_prev]    ;eax = adrs of prev
             mov dword[eax+1],0  ;prev.next = null
+            peekStack           ;for debug...
+            mov eax, [_result]
+            debug eax, _format_debugPush
             freeBoth
     %%endOfAnd:
 %endmacro
@@ -569,6 +587,9 @@ section .text
             mov eax, [_prev]    ;eax = adrs of prev
             mov dword[eax+1],0  ;prev.next = null
             removeTrailingZeros
+            peekStack           ;for debug...
+            mov eax, [_result]
+            debug eax, _format_debugPush
             freeBoth
     %%endOfAnd:
 
@@ -576,10 +597,10 @@ section .text
 
 ;uses x
 %macro incTop 0
-    popFromStack
+    peekStack
     mov eax, [_result]
-    mov dword[_x],eax       ;x hold address of 1st head
-    pushToStack eax
+    mov dword[_x],eax
+
 
     %%whileLoop: ;while(carry != 0)
         mov eax, [_x]
@@ -676,7 +697,6 @@ section .text
     mov eax, ecx                 ;eax = %1 = arg1 = pointer to push
     mov dword[ebx], eax         ;first available spot filled filled arg1
     add dword[_size],1
-    debug ecx, _format_debugPush
     jmp %%complete
 
     %%overFlow:
@@ -779,10 +799,9 @@ section .text
 
 ;%1 is list, %2 string format
 %macro debug 2
-    mov eax, %1
     cmp byte[_debug],0
     jz %%endPopAndPrint
-    ;mov eax, %1          ;eax = address of the lists head
+    mov eax, %1          ;eax = address of the lists head
     push eax
     
     mov edx, 7          ;edx = numBytes to write
@@ -934,9 +953,6 @@ main:
         cmp al, 'q'
         jz endOfProgram
 
-        cmp al, 'c'
-        jz custom
-
         cmp al, 'p'
         jz calcPrint
 
@@ -956,10 +972,6 @@ main:
         jz calcCount
 
         jmp receiveOperand
-
-    custom:
-        testPrint
-        jmp runloop
 
     calcCount:
         inc dword[_numOperations]
